@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<link rel="shortcut icon" type="image/png" href="/public/images/favicon.png" /> 
+<script src='http://code.jquery.com/jquery-1.8.3.min.js' type='text/javascript'></script>
+<script src='https://github.com/einars/js-beautify/blob/master/beautify.js' type='text/javascript'></script>
+<title>API TEST</title>
+<style type='text/css'>
+* { margin: 0; padding: 0; }
+body {
+  width: 80%;
+  max-width: 1000px;
+	margin: 0px auto;
+	font-size: 14px;
+}
+form {
+	margin: 20px auto;
+}
+hr {
+	border: 1px solid rgb(240, 240, 240);
+	margin: 10px auto;
+}
+div#result {
+	background-color: rgb(245, 245, 245);
+	color: rgb(31, 31, 31);
+	padding: 10px;
+	margin-bottom: 10px;
+	min-height: 400px;
+}
+div#result div {
+	margin-top: 10px;
+}
+div#result div.status {
+	font-weight: bold;
+}
+div#result textarea {
+	width: 100%;
+	height: 100%;
+	border: 0px;
+	background-color: rgb(245, 245, 245);
+	resize: none;
+	font-size: 14px;	
+}
+select { padding: 3px; }
+input[type="text"] { padding: 3px; }
+select { width: 20%; margin-right: 12px; }
+input#url { width: 60%; }
+input.header_name { width: 20%; }
+input.header_value { width: 60%; }
+input.parameter_name { width: 20%; }
+input.parameter_value { width: 60%; }
+input[type="button"] { display: block; margin: 10px auto; }
+</style>
+</head> 
+<body>
+	<script type='text/javascript'>
+	$(document).ready(function () {
+		setDocument(getQueries());
+		$('form').submit(function (evtObj) {
+			if(!sendRequest()) evtObj.preventDefault();
+		});
+		
+		$('input#add_header').click(addHeader);
+		$('input#add_parameter').click(addParameter);
+	});
+	
+	function setDocument(commands) {
+		if(!commands) return;
+		
+		for(var i=0; i<commands.length; i++) {
+			switch(commands[i][0]) {
+			case 'method':
+				switch(commands[i][1]) {
+				case 'GET':
+				case 'POST':
+				case 'DELETE':
+				case 'PUT':
+					$("select#method").val(commands[i][1]).attr("selected", "selected");;
+				}
+				break;
+			case 'url':
+				var url = checkURL(commands[i][1]);
+				if(url) $('input#url').val(url);
+				break;
+			case 'header':
+				var header = commands[i][1].split('=');
+				addHeader(header[0], header[1]);
+				break;
+			case 'parameter':
+				var parameter = commands[i][1].split('=');
+				addParameter(parameter[0], parameter[1]);
+				break;
+			case 'commit':
+				if(commands[i][1] == 'true') sendRequest();
+				break;
+			}
+		}	
+	}
+	
+	function getQueries() {
+		var href = window.location.href,
+			queries = href.split('?');
+		if(!queries || queries.length == 1) return null;
+		
+		var query = [];
+		queries = queries[1].split('&');
+		for(var i=0; i<queries.length; i++) {
+			queries[i] = queries[i].split('=');
+			query.push([queries[i][0], decodeURIComponent(queries[i][1])]);
+		}
+		return query;
+	}
+	
+	function addParameter(name, value) {
+		var pn = $('<input/>').attr('type', 'text').attr('class','parameter_name').attr('placeholder','Parameter name'),
+			span = $('<span></span').text(': '),
+			pv = $('<input/>').attr('type', 'text').attr('class','parameter_value').attr('placeholder','Parameter value');
+		
+		if(typeof name == 'string') pn.val(decodeURIComponent(name));
+		if(typeof value == 'string') pv.val(decodeURIComponent(value));
+		$('div#parameters').append(pn).append(span).append(pv).append($('<br/>'));
+		pn.focus();
+	}
+	
+	function addHeader(name, value) {
+		var hn = $('<input/>').attr('type', 'text').attr('class','header_name').attr('placeholder','Header name'),
+			span = $('<span></span').text(': '),
+			hv = $('<input/>').attr('type', 'text').attr('class','header_value').attr('placeholder','Header value');
+		
+		if(typeof name == 'string') hn.val(decodeURIComponent(name));
+		if(typeof value == 'string') hv.val(decodeURIComponent(value));
+		$('div#headers').append(hn).append(span).append(hv).append($('<br/>'));
+		hn.focus();
+	}	
+	
+	function sendRequest() {
+		var method = $('select#method option:selected').val(),
+			url = checkURL($('input#url').val()),
+			header = coupleDOM($('input.header_name').toArray(), $('input.header_value').toArray()),
+			parameter = coupleDOM($('input.parameter_name').toArray(), $('input.parameter_value').toArray(), true);
+		
+		if(!header || !parameter) return;
+		if(!method) return error('Method must be selected', $('select#method'));
+		if(!url) return error('URL is malformed or undefined', $('input#url'));
+		
+		if((method == 'GET' || method == 'DELETE')) url += encodeQuery(parameter);
+		
+		$.ajax({
+			type: method,
+			url: url,
+			headers: header,
+			data: ((method == 'POST' || method == 'PUT') ? parameter : null ),
+			complete: function (jqXHR) {
+				var status = jqXHR.status,
+					statusText = jqXHR.statusText,
+					header = parseHeader(jqXHR.getAllResponseHeaders());
+				showResponse(status, statusText, header, jqXHR.responseText);
+			}
+		});
+	}
+	
+	function beautifyBody() {
+		var textarea = $('div#result textarea');
+		textarea.text(js_beautify(textarea.text()));
+	}
+	function showResponse(status, textStatus, headers, body) {
+		var $status = $('<div></div>').addClass('status').text('HTTP/1.1 '),
+			$status_no = $('<span></span>').addClass('status_no').text(status + ' '),
+			$status_txt = $('<span></span>').addClass('status_txt').text(textStatus),
+			$headers = $('<div></div>').addClass('headers'),
+			$body = $('<div></div>').addClass('body'),
+			$body_content = $('<textarea></textarea>').addClass('body_content').text(body.trim()).attr('readonly', 'readonly').attr('rows', 12),
+			$btn_beautifier = $('<input></input').attr('type', 'button').attr('value', 'Beautify').click(beautifyBody);
+		
+		
+		$status.append($status_no).append($status_txt);
+		
+		for(var i=0; i<headers.length; i++) {
+			var $header_name = $('<span></span>').addClass('header_name').text(headers[i][0] + ': '),
+				$header_value = $('<span></span>').addClass('header_value').text(headers[i][1]);
+			$headers.append($header_name).append($header_value).append($('<br/>'));
+		}
+		
+		$body.append($body_content);
+		
+		$('div#result').html('');
+		$('div#result').append($status).append($headers).append($body).append($btn_beautifier);
+	}
+	
+	function parseHeader(header) {
+		var headers = [];
+		header = header.split('\n');
+		for(var i=0; i<header.length; i++) {
+			var	split = header[i].indexOf(':'),
+				name = header[i].substring(0, split),
+				value = header[i].substring(split + 2, header[i].length);
+			
+			if(name != '') headers.push([name, value]);
+		}
+		return headers;
+	}
+	
+	function encodeQuery(params) {
+		var query = [];
+		for(var key in params) query.push(key + '=' + params[key]);
+		if(query.length > 0) return '?' + query.join('&');
+		else return '';
+	}
+	
+	function checkURL(url) {
+		if(url.match(/^\//i)) return url;
+	}
+	
+	function coupleDOM(names, values, encode) {
+		var obj = {};
+		
+		for(var i=0; i<names.length; i++) {
+			var $name = $(names[i]),
+				$value = $(values[i]);
+			
+			if($name.val() == '') continue;
+			if(obj[$name.val()]) return error('Duplicated name("' + $name.val() + '")', $name); 
+			obj[$name.val()] = (encode ? encodeURIComponent($value.val()) : $value.val());
+		}
+		
+		return obj;
+	}
+	
+	function error(msg, $obj) {
+		if(msg) alert(msg);
+		if($obj) $obj.focus();
+	}
+	</script>
+	
+	<form>
+		<select id='method'><option value='GET'>GET</option><option value='POST'>POST</option><option value='PUT'>PUT</option><option value='DELETE'>DELETE</option></select>
+		<input type='text' id='url' placeholder='/url...' /><hr/>
+		<div id='headers'></div><input id='add_header' type='button' value='Add a header...' /><hr/>
+		<div id='parameters'></div><input id='add_parameter' type='button' value='Add a parameter...' /><hr/>
+		<input type='submit'/>
+	</form>
+	<div id='result'></div>
+</body>
+</html>

@@ -60,7 +60,6 @@ div#result div.status {
 }
 div#result textarea {
 	width: 100%;
-	height: 100%;
 	border: 0px;
 	background-color: rgb(245, 245, 245);
 	resize: none;
@@ -74,7 +73,7 @@ input.header_name { width: 20%; }
 input.header_value { width: 60%; }
 input.parameter_name { width: 20%; }
 input.parameter_value { width: 60%; }
-input[type="button"] { display: block; margin: 10px auto; }
+input[type="button"].centerbutton { display: block; margin: 10px auto; }
 </style>
 </head> 
 <body>
@@ -87,6 +86,7 @@ input[type="button"] { display: block; margin: 10px auto; }
 		
 		$('input#add_header').click(addHeader);
 		$('input#add_parameter').click(addParameter);
+		$('input#shortcut').click(createShortcut);
 	});
 	
 	function setDocument(commands) {
@@ -100,6 +100,7 @@ input[type="button"] { display: block; margin: 10px auto; }
 				case 'POST':
 				case 'DELETE':
 				case 'PUT':
+				case 'PATCH':
 					$("select#method").val(commands[i][1]).attr("selected", "selected");;
 				}
 				break;
@@ -158,6 +159,28 @@ input[type="button"] { display: block; margin: 10px auto; }
 		hn.focus();
 	}	
 	
+	function createShortcut() {
+		var href = document.location.href.split('?')[0],
+			queries = [],
+			method = $('select#method option:selected').val(),
+			url = checkURL($('input#url').val()),
+			header = coupleDOM($('input.header_name').toArray(), $('input.header_value').toArray()),
+			parameter = coupleDOM($('input.parameter_name').toArray(), $('input.parameter_value').toArray(), true);
+	
+		queries.push('method=' + method);
+		queries.push('url=' + encodeURIComponent(url));
+		
+		for(var key in header) {
+			queries.push('header=' + encodeURIComponent(key + '=' + header[key]));
+		}
+		for(var key in parameter) {
+			queries.push('parameter=' + encodeURIComponent(key + '=' + parameter[key]));
+		}
+		
+		queries.push('commit=true');
+		alert(href + '?' + queries.join('&'));
+	}
+	
 	function sendRequest() {
 		var method = $('select#method option:selected').val(),
 			url = checkURL($('input#url').val()),
@@ -174,7 +197,7 @@ input[type="button"] { display: block; margin: 10px auto; }
 			type: method,
 			url: url,
 			headers: header,
-			data: ((method == 'POST' || method == 'PUT') ? parameter : null ),
+			data: ((method == 'POST' || method == 'PUT' || method == 'PATCH') ? parameter : null ),
 			complete: function (jqXHR) {
 				var status = jqXHR.status,
 					statusText = jqXHR.statusText,
@@ -258,11 +281,12 @@ input[type="button"] { display: block; margin: 10px auto; }
 	</script>
 	
 	<form>
-		<select id='method'><option value='GET'>GET</option><option value='POST'>POST</option><option value='PUT'>PUT</option><option value='DELETE'>DELETE</option></select>
+		<select id='method'><option value='GET'>GET</option><option value='POST'>POST</option><option value='PUT'>PUT</option><option value='DELETE'>DELETE</option><option value='PATCH'>PATCH</option></select>
 		<input type='text' id='url' placeholder='/url...' /><hr/>
-		<div id='headers'></div><input id='add_header' type='button' value='Add a header...' /><hr/>
-		<div id='parameters'></div><input id='add_parameter' type='button' value='Add a parameter...' /><hr/>
-		<input type='submit'/>
+		<div id='headers'></div><input id='add_header' class='centerbutton' type='button' value='Add a header...' /><hr/>
+		<div id='parameters'></div><input id='add_parameter' class='centerbutton' type='button' value='Add a parameter...' /><hr/>
+		<input type='submit' value='submit'/>
+		<input id='shortcut' type='button' value='shortcut'/>
 	</form>
 	<div id='result'></div>
 </body>
